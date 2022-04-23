@@ -5,6 +5,7 @@ import * as dat from "lil-gui";
 import { randFloat, randInt } from "three/src/math/MathUtils";
 import { faker } from "@faker-js/faker";
 import gsap from "gsap-trial";
+import html2canvas from "html2canvas";
 /**
  * Base
  */
@@ -58,6 +59,9 @@ const parameters = {
   outsideColor: "#1b3984",
   speed: 0.1,
   showSkybox: true,
+  showGalaxyName: true,
+  showInstructions: true,
+  hideMenuOnScreenshot: true,
 };
 
 let geometry = null;
@@ -176,6 +180,26 @@ animationFolder.add(parameters, "showSkybox").onChange((v) => {
     scene.background = null;
   }
 });
+animationFolder
+  .add(parameters, "showGalaxyName")
+  .name("Display Galaxy Name")
+  .onChange((v) => {
+    if (v === true) {
+      document.querySelector(".galaxy-name").style.visibility = "visible";
+    } else {
+      document.querySelector(".galaxy-name").style.visibility = "hidden";
+    }
+  });
+animationFolder
+  .add(parameters, "showInstructions")
+  .name("Display Instructions")
+  .onChange((v) => {
+    if (v === true) {
+      document.querySelector("#info2").style.visibility = "visible";
+    } else {
+      document.querySelector("#info2").style.visibility = "hidden";
+    }
+  });
 
 /**
  * Generates a random galaxy on call
@@ -207,7 +231,7 @@ parameters.generateRandomGalaxy = () => {
   /**
    * Generates a random name for the galaxy
    */
-  const wordsNb = randInt(1, 5);
+  const wordsNb = randInt(1, 4);
   const romanNumber = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"].sample();
   const decorator = ["Major", "Alpha", "Beta", "Omgea", "", "Prime", "Bonus"].sample();
   let galaxyName = "";
@@ -230,7 +254,34 @@ parameters.generateRandomGalaxy = () => {
 };
 gui.add(parameters, "generateRandomGalaxy").name("Generate Random Galaxy");
 
+const saveBlob = (function () {
+  const a = document.createElement("a");
+  document.body.appendChild(a);
+  a.style.display = "none";
+  return function saveData(blob, fileName) {
+    const url = window.URL.createObjectURL(blob);
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    document.body.removeChild(a);
+  };
+})();
+
+parameters.screenshot = () => {
+  const canvas = document.querySelector("canvas");
+  canvas.toBlob((blob) => {
+    saveBlob(blob, `galaxy-generator-${canvas.width}x${canvas.height}.png`);
+  });
+};
+gui.add(parameters, "screenshot").name("Screenshot");
+
 parameters.generateRandomGalaxy();
+
+window.addEventListener("keypress", (ev) => {
+  if (ev.key === "g") {
+    parameters.generateRandomGalaxy();
+  }
+});
 
 /**
  * Sizes
@@ -273,6 +324,7 @@ controls.enableDamping = true;
  */
 const renderer = new THREE.WebGLRenderer({
   canvas: canvas,
+  preserveDrawingBuffer: true, // For screenshots
 });
 renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
