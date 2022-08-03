@@ -6,6 +6,9 @@ import { randFloat, randInt } from "three/src/math/MathUtils";
 import { faker } from "@faker-js/faker";
 import gsap from "gsap-trial";
 import html2canvas from "html2canvas";
+import galaxyVertexShader from "./shaders/galaxy/vertex.glsl";
+import galaxyFragmentShader from "./shaders/galaxy/fragment.glsl";
+
 /**
  * Base
  */
@@ -41,7 +44,7 @@ const skybox = cubeLoader.load([
   "/textures/skybox/back.png", // nz
 ]);
 
-scene.background = skybox;
+// scene.background = skybox;
 
 /**
  * Galaxy generator
@@ -49,7 +52,7 @@ scene.background = skybox;
 
 const parameters = {
   count: 100000,
-  size: 0.01,
+  size: 15,
   radius: 5,
   branches: 3,
   spin: 1,
@@ -82,6 +85,8 @@ const generateGalaxy = () => {
   geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(parameters.count * 3);
   const colors = new Float32Array(parameters.count * 3);
+  const scales = new Float32Array(parameters.count);
+  const randomness = new Float32Array(parameters.count * 3);
 
   const colorInside = new THREE.Color(parameters.insideColor);
   const colorOutside = new THREE.Color(parameters.outsideColor);
@@ -115,15 +120,21 @@ const generateGalaxy = () => {
       parameters.randomness *
       radius;
 
-    positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
-    positions[i3 + 1] = randomY;
-    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ; //randFloat(parameters.minRange, parameters.maxRange);
+    positions[i3] = Math.cos(branchAngle + spinAngle) * radius;
+    positions[i3 + 1] = 0;
+    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius; //randFloat(parameters.minRange, parameters.maxRange);
+
+    randomness[i3] = randomX;
+    randomness[i3 + 1] = randomY;
+    randomness[i3 + 2] = randomZ;
 
     const mixedColor = colorInside.clone();
     mixedColor.lerp(colorOutside, radius / parameters.radius);
     colors[i3] = mixedColor.r;
     colors[i3 + 1] = mixedColor.g;
     colors[i3 + 2] = mixedColor.b;
+
+    scales[i] = Math.random();
   }
 
   /**
@@ -131,32 +142,35 @@ const generateGalaxy = () => {
    */
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("scales", new THREE.BufferAttribute(scales, 1));
+  geometry.setAttribute("randomness", new THREE.BufferAttribute(randomness, 3));
 
   /**
    * Create the material
    */
-  material = new THREE.PointsMaterial({
-    size: parameters.size,
-    sizeAttenuation: true,
+  material = new THREE.ShaderMaterial({
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     vertexColors: true,
-    color: "white",
+    vertexShader: galaxyVertexShader,
+    fragmentShader: galaxyFragmentShader,
+    uniforms: {
+      uSize: { value: parameters.size * renderer.getPixelRatio() },
+      uTime: { value: 0 },
+    },
   });
 
   particles = new THREE.Points(geometry, material);
   scene.add(particles);
 };
 
-generateGalaxy();
-
 /**
  * Tweaks
  */
 const particlesFolder = gui.addFolder("Particles");
 particlesFolder.add(parameters, "count").min(10).max(999999).step(100).listen().onFinishChange(generateGalaxy);
-particlesFolder.add(parameters, "size").min(0.001).max(5).step(0.001).listen().onFinishChange(generateGalaxy);
+particlesFolder.add(parameters, "size").min(0.001).max(50).step(0.001).listen().onFinishChange(generateGalaxy);
 
 const galaxyFolder = gui.addFolder("Galaxy");
 galaxyFolder.add(parameters, "radius").min(0.01).max(20).step(0.01).listen().onFinishChange(generateGalaxy);
@@ -225,9 +239,6 @@ parameters.generateRandomGalaxy = () => {
   parameters.outsideColor = "#" + outsideColor.getHexString();
   parameters.speed = randFloat(-2, 2);
 
-  // Creates the galaxy
-  generateGalaxy();
-
   /**
    * Generates a random name for the galaxy
    */
@@ -252,7 +263,14 @@ parameters.generateRandomGalaxy = () => {
     duration: 0.6,
   });
 };
-gui.add(parameters, "generateRandomGalaxy").name("Generate Random Galaxy");
+
+// Nécessaire à cause des modifs
+parameters.trueGenerateRandomGalaxy = () => {
+  parameters.generateRandomGalaxy();
+  generateGalaxy();
+};
+
+gui.add(parameters, "trueGenerateRandomGalaxy").name("Generate Random Galaxy");
 
 const saveBlob = (function () {
   const a = document.createElement("a");
@@ -329,6 +347,8 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+generateGalaxy();
+
 /**
  * Animate
  */
@@ -339,8 +359,9 @@ const tick = () => {
 
   // Update controls
   controls.update();
-  if (particles !== null) {
-    particles.rotation.y = elapsedTime * parameters.speed;
+  if (material !== null) {
+    // particles.rotation.y = elapsedTime * parameters.speed;
+    material.uniforms.uTime.value = elapsedTime;
   }
 
   // Render
